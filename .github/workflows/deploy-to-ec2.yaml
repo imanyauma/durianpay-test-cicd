@@ -11,20 +11,41 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
-      - name: AWS SSM Send-Command
-        uses: peterkimzz/aws-ssm-send-command@v1.1.1
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v3
         with:
-          # AWS access key id
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          # AWS secret access key
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          # Where EC2 instance is
-          aws-region: ${{ secrets.AWS_REGION }}
-          # AWS EC2 Instance id or ids
-          instance-ids: ${{ secrets.AWS_INSTANCE_ID }}
-          # Command execution location
-          # !!! The line below may vary depending on where your docker-compose file is located.
-          working-directory: /home/ec2-user
-          # Bash commands you want to execute
-          command: |
-            docker run -d -p 80:80 --name durianpay-test-nginx imanyauma/durianpay-test-nginx:latest
+          aws-region: us-east-1 # Change to your region
+
+      - name: Pull Docker Image Information
+        run: |
+          echo "Using image: imanyauma/durianpay-test:latest"
+          echo "export IMAGE=imanyauma/durianpay-test:latest" >> $GITHUB_ENV
+
+      - name: Update EC2 Instances in Auto Scaling Group
+        run: |
+          ASG_NAME="your-auto-scaling-group-name"
+          INSTANCE_IDS=$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names $ASG_NAME \
+            --query "AutoScalingGroups[].Instances[].InstanceId" \
+            --output text)
+
+          for INSTANCE_ID in $INSTANCE_IDS; do
+            PUBLIC_DNS=$(aws ec2 describe-instances \
+              --instance-ids $INSTANCE_ID \
+              --query "Reservations[].Instances[].PublicDnsName" \
+              --output text)
+          
+            echo "Deploying to instance: $INSTANCE_ID ($PUBLIC_DNS)"
+          
+            ssh -o StrictHostKeyChecking=no -i ${{ secrets.EC2_KEY_PAIR }} ec2-user@$PUBLIC_DNS << EOF
+              docker pull $IMAGE
+              docker stop my-app || true
+              docker rm my-app || true
+              docker run -d --name my-app -p 80:80 $IMAGE
+            EOF
+          done
