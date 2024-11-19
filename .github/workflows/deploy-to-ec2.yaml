@@ -28,8 +28,8 @@ jobs:
 
       - name: Update EC2 Instances in Auto Scaling Group
         run: |
-          ASG_NAME="your-auto-scaling-group-name"
-          INSTANCE_IDS=$(aws autoscaling describe-auto-scaling-groups \
+          ASG_NAME="durianpay-asg"
+            INSTANCE_IDS=$(aws autoscaling describe-auto-scaling-groups \
             --auto-scaling-group-names $ASG_NAME \
             --query "AutoScalingGroups[].Instances[].InstanceId" \
             --output text)
